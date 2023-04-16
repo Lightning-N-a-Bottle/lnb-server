@@ -7,23 +7,56 @@
         - https://pypi.org/project/gmplot/
         - https://github.com/gmplot/gmplot/wiki
 """
-
 import gmplot
-gmap = gmplot.GoogleMapPlotter
+import pandas as pd
+from tkinter import filedialog
 
-gmap.apikey = "inserting my API key here"
+nodes = []
 
-latitude_list = [ 30.3358376, 30.307977, 30.3216419 ]
+def read_csvs():
+    """
+    """
+    print("Select storm directory")
+    data_dir = filedialog.askdirectory()
+    print(f"directory = {data_dir}")
 
-longitude_list = [ 77.8701919, 78.048457, 78.0413095 ]
+    for datafile in data_dir:
+        print(f"data file = {datafile}")
+        df = pd.read_csv(datafile)
 
-gmap = gmplot.GoogleMapPlotter(30.3184945,
-                            78.03219179999999, 13)
 
-gmap.scatter( latitude_list, longitude_list, '# FF0000',
-                            size = 40, marker = False)
+def generate_gmap():
+    # Create the map plotter:
+    apikey = '' # (your API key here)
 
-gmap.polygon(latitude_list, longitude_list,
-               color = 'cornflowerblue')
+    # Mark the OMB building as the center of the map, zoom, and plot a range
+    omb_loc = (30.61771327808669, -96.33664482193207)
+    gmap = gmplot.GoogleMapPlotter(omb_loc[0], omb_loc[1], 10, apikey=apikey)
+    gmap.marker(omb_loc[0], omb_loc[1], color='cornflowerblue')
+    gmap.circle(omb_loc[0], omb_loc[1], 40000, face_alpha=0)
 
-gmap.draw("path to save .html")
+    # TODO: Read in CSV data
+
+    nodes = [
+        (30, -96, 100, 200, 10000),
+        (30, -95, 300, 500, 12000),
+        (31, -95, 500, 250, 900),
+        (31, -96, 300, 700, 14000)
+    ]
+
+    # Place markers on the map from the nodes
+    for node in nodes:
+        gmap.marker(node[0], node[1], color='red')
+
+        c = 2
+        while c < len(node):
+            # Record a circle for each strike in range
+            gmap.circle(node[0], node[1], node[c], face_alpha=0)
+            c+=1
+
+    # Draw the map:
+    gmap.draw('map.html')
+
+if __name__ == "__main__":
+    read_csvs()
+    generate_gmap()
