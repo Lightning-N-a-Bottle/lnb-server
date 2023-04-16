@@ -1,3 +1,5 @@
 # pip install -r requirements.txt
 gmplot
 pandas
+tk
+matplotlib
