@@ -23,7 +23,11 @@ end_time = 0
 timespan = 0
 
 def read_csvs():
-    """
+    """ Read in all the csvs in a directory
+
+        Ideally all csvs in the directory are from the same storm and have similar time ranges
+
+        TODO: add local timespans for better node graphs
     """
     # Select the dataset to read from, should just be a folder filled with csvs
     logging.info("Select storm directory")
@@ -78,7 +82,7 @@ def read_csvs():
         )
     # Shows the timestamp range of the dataset as a whole
     global timespan
-    timespan = (end_time-start_time)
+    timespan = end_time-start_time
     logging.info("Dataset spans %f hours", timespan/3600)
 
 def generate_bar():
@@ -116,7 +120,7 @@ def generate_bar():
         plt.ylabel("Strike Count")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{dataset}/{plot_name}.png")
-        plt.show()
+        plt.close()
 
     # Generate the Scatterplot for the entire dataset
     plot_name = f"{dataset}_Strikes-over-time"
@@ -125,7 +129,6 @@ def generate_bar():
     plt.ylabel("Strike Count")
     plt.title(plot_name)
     plt.savefig(f"./outputs/{dataset}/{plot_name}.png")
-    plt.show()
     plt.close()
 
 def generate_scatter():
@@ -158,7 +161,7 @@ def generate_scatter():
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{dataset}/{plot_name}.png")
-        plt.show()
+        plt.close()
 
     # Generate the Scatterplot for the entire dataset
     plot_name = f"{dataset}_Sum_Scatter"
@@ -167,7 +170,6 @@ def generate_scatter():
     plt.ylabel("Distance (km)")
     plt.title(plot_name)
     plt.savefig(f"./outputs/{dataset}/{plot_name}.png")
-    plt.show()
     plt.close()
 
 def generate_gmap():
