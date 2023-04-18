@@ -42,7 +42,7 @@ def read_csvs():
 
     # Read in data from each file in the directory
     for datafile in os.listdir(data_dir):
-        logging.debug("data file = %s", datafile)
+        # logging.info("data file = %s", datafile)
 
         df = pd.read_csv(data_dir + "/" + datafile)
 
@@ -53,16 +53,17 @@ def read_csvs():
                 df["GPS_Longitude"][0],
             ]
         )
-        # The rest of the elements for each node will be tuples -> [Timestamp, Distance]
-        for i in range(len(df["Timestamp"])):
-            tm_stp = df["Timestamp"][i]
-            stk_dist = df["Lightning Distance"][i]
+        # The rest of the elements for each node will be tuples -> [Epoch_Time, Distance]
+        num_elements = len(df["Epoch_Time"])
+        for i in range(num_elements):
+            tm_stp = df["Epoch_Time"][i]
+            stk_dist = df["Distance"][i]
 
             # Set the min and max time identified from the dataset
             global start_time, end_time
             if i == 0 and tm_stp < start_time or start_time == 0:
                 start_time = tm_stp
-            if i == len(df["Timestamp"])-1 and tm_stp > end_time:
+            if i == num_elements-1 and tm_stp > end_time:
                 end_time = tm_stp
 
             # If this is a disturber, cap it at max distance
@@ -72,12 +73,13 @@ def read_csvs():
             entry = [tm_stp,stk_dist]
 
             # Filter out disturbers, remove if statement (but keep append) to include disturbers
-            if stk_dist < 40:
-                nodes[len(nodes)-1].append(entry)
+            # if stk_dist < 40:
+            nodes[len(nodes)-1].append(entry)
 
         # Debugging info for timestamp ranges
         logging.info(
-            "Entry starts %s",
+            "%s entry starts %s",
+            datafile,
             time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))
         )
     # Shows the timestamp range of the dataset as a whole
@@ -91,7 +93,7 @@ def generate_bar():
         This should have a configurable time-width per column.
         In addition, one bar chart should be generated per node, and one cumulative chart.
     """
-    zones = 5
+    zones = 24
     interval = timespan/zones
     sum_stk = []
     time_stk = []
@@ -183,12 +185,6 @@ def generate_gmap():
     # Create the map plotter:
     apikey = '' # (your API key here)
 
-    # Mark the OMB building as the center of the map, zoom, and plot a range
-    omb_loc = (30.61771327808669, -96.33664482193207)
-    gmap = gmplot.GoogleMapPlotter(omb_loc[0], omb_loc[1], 10, apikey=apikey)
-    gmap.marker(omb_loc[0], omb_loc[1], color='cornflowerblue')
-    gmap.circle(omb_loc[0], omb_loc[1], 40000, face_alpha=0)
-
     # Example format for nodes, each row is gpslat, gpslong, [Time,Dist]...
     # nodes = [
     #     (30, -96, [0,100], [1,200], [2,10000]),
@@ -197,18 +193,28 @@ def generate_gmap():
     #     (31, -96, [0,300], [1,700], [2,14000])
     # ]
 
-    # Place markers on the map from the nodes
-    for node in nodes:
-        gmap.marker(node[0], node[1], color='red')
+    c = 2
+    while c < len(nodes[0]):
+        # Mark the OMB building as the center of the map, zoom, and plot a range
+        omb_loc = (30.61771327808669, -96.33664482193207)
+        gmap = gmplot.GoogleMapPlotter(omb_loc[0], omb_loc[1], 10, apikey=apikey)
+        gmap.marker(omb_loc[0], omb_loc[1], color='cornflowerblue')
+        gmap.circle(omb_loc[0], omb_loc[1], 40000, face_alpha=0)
 
-        c = 2
-        while c < len(node):
-            # Record a circle for each strike in range
+        for i, node in enumerate(nodes):
+            gmap.marker(node[0], node[1], color='red')
             gmap.circle(node[0], node[1], node[c][1]*1000, face_alpha=0)
-            c+=1
 
-    # Draw the map:
-    gmap.draw(f'./outputs/{dataset}/map.html')
+        # c = 2
+    #     while c < len(node):
+    #         # Record a circle for each strike in range
+    #         gmap.circle(node[0], node[1], node[c][1]*1000, face_alpha=0)
+    #         c+=1
+
+        # Draw the map:
+        logging.debug("Printing %f", nodes[0][c][0])
+        gmap.draw(f'./outputs/{dataset}/strike_{nodes[0][c][0]}.html')
+        c += 1
 
 if __name__ == "__main__":
     fmt_main = "%(asctime)s | LNB_Post:\t%(message)s"
