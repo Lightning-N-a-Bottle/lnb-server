@@ -205,12 +205,6 @@ def generate_gmap():
             gmap.marker(node[0], node[1], color='red')
             gmap.circle(node[0], node[1], node[c][1]*1000, face_alpha=0)
 
-        # c = 2
-    #     while c < len(node):
-    #         # Record a circle for each strike in range
-    #         gmap.circle(node[0], node[1], node[c][1]*1000, face_alpha=0)
-    #         c+=1
-
         # Draw the map:
         logging.debug("Printing %f", nodes[0][c][0])
         gmap.draw(f'./outputs/{dataset}/strike_{nodes[0][c][0]}.html')
