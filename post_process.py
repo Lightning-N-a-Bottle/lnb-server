@@ -1,6 +1,7 @@
 """ post_process.py
 
-    Handle all processing of the acquired data here
+    Handles the post processing required for the acquired lnb-capstone data
+    
 
     Notes:
         - https://stackoverflow.com/questions/54120759/gmplot-api-issue
@@ -10,46 +11,119 @@
 import logging
 import os
 import sys
-from tkinter import filedialog
 import time
-import gmplot
-import pandas as pd
-import matplotlib.pyplot as plt
+from tkinter import filedialog
+from typing import Dict, NewType, Union, List
 
+import gmplot
+import matplotlib.pyplot as plt
+import pandas as pd
+
+Min_Time = .5
+
+color_dict = {
+    "NODE1": (0, 0, 0),
+    "NODE2": (255, 0, 0),
+    "NODE3": (0, 255, 0),
+    "NODE4": (255, 255, 0),
+    "NODE5": (0, 0, 255),
+    "NODE6": (255, 0, 255),
+    "NODE7": (0, 255, 255),
+    "NODE8": (255, 255, 255)
+}
+
+
+class Packet:
+    """
+    """
+    gps_lat: float = 0
+    gps_long: float = 0
+    distance: int = 0
+
+    def __init__(self, lat, lon, dis) -> None:
+        self.gps_lat = lat
+        self.gps_long = lon
+        self.distance = dis
+
+class Strike:
+    """
+    """
+    utc: str = ""
+    day: int = 0
+    hour: int = 0
+    minute: int = 0
+    second: int = 0
+    epoch: float = 0
+    packet_list: List[Packet] = []
+
+    def __init__(self, epoch: int) -> None:
+        self.epoch = epoch
+        timestruc: time.struct_time = time.localtime(epoch)
+        self.utc = f"{timestruc.tm_year}-{timestruc.tm_mon}-{timestruc.tm_mday}T{timestruc.tm_hour}:{timestruc.tm_min}:{timestruc.tm_sec}Z"
+        self.day = self.utc[8:10]
+        self.hour = self.utc[11:13]
+
+    def add_event(self, pack: Packet):
+        self.packet_list.append(pack)
+        
 
 class PostProcess:
-    """ Generates a basic set of graphics from 
-    
+    """ Generates a basic set of graphics from input lightning data csvs
+
+    Each dataset of CSVs should be contained within their own folder, the program will
+    automatically prompt the user to select a dataset with a filedialog box. Afterwards, it will
+    read in all the CSVs into a collective dataframe with the following labels:
+
+    UTC_Time, Epoch_Time, GPS_Latitude, GPS_Longitude, Distance
+
+    This cumulative dataframe will be sorted by timestamp, and then parsed to identify strikes from
+    different sources. Each strike will be identified by a timestamp, and will contain a list of
+    nodes that detected it, with the distance away from the node.
+
+    Each object of Packet type will contain a gps latitude and longitude to identify the node, and
+    a distance value to show the distance from the node.
+
+    gps_lat, gps_long, distance
+
+    The strike will be represented by the Strike class, which has a public utc timestamp, and a
+    list of Packet objects described above.
+
+    utc, packet_list
     """
+    # Define class constants
+    nodes = []
+    strikes: List[Strike] = []
+    dataset: str = ""
+    start_time: float = 0
+    end_time: float = 0
+    timespan: float = 0
+    sum_df = pd.DataFrame()
+
     def __init__(self) -> None:
         # Initialize Logger
-        fmt_main = "%(asctime)s | LNB_Post:\t%(message)s"
+        fmt_main = "%(asctime)s | %(levelname)s | LNB_Post:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
-        # Define class constants
-        self.nodes = []
-        self.dataset = ""
-        self.start_time = 0
-        self.end_time = 0
-        self.timespan = 0
-        self.sum_df = pd.DataFrame()
 
         self.read_csvs()
+        self.identify_strikes()
+
+        logging.info("%d Strikes. Strike at %s has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
 
         if not os.path.exists(f"./outputs/{self.dataset}"):
             os.mkdir(f"./outputs/{self.dataset}")
 
-        self.generate_bar()
-        self.generate_scatter()
+        # self.generate_bar()
+        # self.generate_scatter()
         self.generate_gmap()
 
     def read_csvs(self):
         """ Read in all the csvs in a directory
 
-            Ideally all csvs in the directory are from the same storm and have similar time ranges
+        Ideally all csvs in the directory are from the same storm and have similar time ranges
 
-            TODO: add local timespans for better node graphs
+        TODO: add local timespans for better node graphs
         """
         # Select the dataset to read from, should just be a folder filled with csvs
         logging.info("Select storm directory")
@@ -66,8 +140,8 @@ class PostProcess:
 
         # Read in data from each file in the directory
         for datafile in os.listdir(data_dir):
-            data_frame = pd.read_csv(data_dir + "/" + datafile)
-            self.sum_df = pd.concat([self.sum_df, data_frame])
+            data_frame = pd.read_csv(filepath_or_buffer=data_dir+"/"+datafile, header=0)
+            self.sum_df = pd.concat(objs=[self.sum_df, data_frame], ignore_index=True)
 
             # Append the gps coordinates for the first two elements
             self.nodes.append([data_frame["GPS_Latitude"][0], data_frame["GPS_Longitude"][0]])
@@ -91,8 +165,8 @@ class PostProcess:
                 entry = [utc_tm,tm_stp,stk_dist]
 
                 # Filter out disturbers, remove if statement (but keep append) to include disturbers
-                # if stk_dist < 40:
-                self.nodes[len(self.nodes)-1].append(entry)
+                if stk_dist < 40:
+                    self.nodes[len(self.nodes)-1].append(entry)
 
             # Debugging info for timestamp ranges
             logging.info(
@@ -105,11 +179,49 @@ class PostProcess:
         self.timespan = self.end_time-self.start_time
         logging.info("Dataset spans %f hours", self.timespan/3600)
 
+    def identify_strikes(self):
+        """ Populates the strikes list with Strike objects
+
+
+        """
+        # Grab the first time in the sorted dataset and append to strikelist
+        ep1 = self.sum_df["Epoch_Time"].to_numpy()[0]
+        self.strikes.append(Strike(ep1))
+
+        # Loop through each data entry and decide where to place it
+        i = 0
+        while i < len(self.sum_df):
+            ep2 = self.sum_df["Epoch_Time"].to_numpy()[i]
+            logging.info("Index %d has time %f", i, ep2)
+
+            # Create a new packet from the current entry
+            pack = Packet(
+                self.sum_df["GPS_Latitude"][i],
+                self.sum_df["GPS_Longitude"][i],
+                self.sum_df["Distance"][i]
+            )
+
+            # If enough time has passed from the previous strike, then create a new one
+            if ep1-ep2 > Min_Time:
+                self.strikes.append(Strike(ep2))
+
+            # Add the packet data to the current Strike object
+            self.strikes[len(self.strikes)-1].add_event(pack)
+            i += 1
+
     def generate_bar(self):
         """ Generates a bar chart that shows how many strikes that were detected over a time period
 
-            This should have a configurable time-width per column.
-            In addition, one bar chart should be generated per node, and one cumulative chart.
+            This should produce a 1 chart per day, with a bar for each hour showing strike count
+            and 1 chart containing all data, with a bar for each day showing strike count
+
+            Potential Future improvements:
+                - Color code the bar to show difference between disturbers and strikes
+
+            Args:
+                - None
+            Returns:
+                - None
         """
         zones = 24
         interval = self.timespan/zones
@@ -135,17 +247,18 @@ class PostProcess:
 
             # Generate the Scatterplot from only the current node
             # Generate the daily plot
-            plot_name = f"{self.dataset}_Strikes-over-time_({node[0]}_{node[1]})"
-            plt.bar(time_stk, local_stk, width=interval)
+            plot_name = f"{self.dataset}_Strikes-per-Hour_({day})"
+            bar = plt.bar(time_stk, local_stk, width=interval)
             plt.xlabel("Time Interval (sec)")
-            plt.ylabel("Strike Count")
+            plt.xticks(range(0,24))
+            plt.ylabel("Strikes per Hour")
             plt.title(plot_name)
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
             plt.close()
 
         # Generate the Scatterplot for the entire dataset
-        plot_name = f"{self.dataset}_Strikes-over-time"
-        plt.xlabel("Time Interval (sec)")
+        plot_name = f"{self.dataset}_Strikes-per-Day"
+        plt.xlabel("Day")
         plt.ylabel("Strike Count")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
@@ -157,15 +270,10 @@ class PostProcess:
             This should generate one scatterplot per node, and a scatterplot that includes
             all nodes in the current dataset.
         """
-        sum_tm = []
-        sum_sd = []
 
         # Organize the data from each node
-        for node in self.nodes:
-            local_tm = []
-            local_sd = []
-
-            c = 2
+        for strike in self.strikes:
+            c = 0
             while c < len(node):
                 sum_tm.append(node[c][1])
                 local_tm.append(node[c][1])
@@ -185,7 +293,7 @@ class PostProcess:
 
         # Generate the Scatterplot for the entire dataset
         plot_name = f"{self.dataset}_Sum_Scatter"
-        plt.scatter(sum_tm, sum_sd)
+        plt.scatter(sum_tm, sum_sd, )
         plt.xlabel("Time (sec)")
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
@@ -200,16 +308,7 @@ class PostProcess:
             to the distance detected by the sensor.
             The map will be centered on the OMB building, and be zoomed out to include about 40km
         """
-        # Example format for nodes, each row is gpslat, gpslong, [Time,Dist]...
-        # nodes = [
-        #     (30, -96, [0,100], [1,200], [2,10000]),
-        #     (30, -95, [0,300], [1,500], [2,12000]),
-        #     (31, -95, [0,500], [1,250], [2,900]),
-        #     (31, -96, [0,300], [1,700], [2,14000])
-        # ]
-
-        c = 2
-        while c < len(self.nodes[0]):
+        for strike in self.strikes:
             # Create the map plotter:
             # Mark the OMB building as the center of the map, zoom, and plot a range
             omb_loc = (30.61771327808669, -96.33664482193207)
@@ -217,14 +316,14 @@ class PostProcess:
             gmap.marker(omb_loc[0], omb_loc[1], color='cornflowerblue')
             gmap.circle(omb_loc[0], omb_loc[1], 40000, face_alpha=0)
 
-            for node in self.nodes:
-                gmap.marker(node[0], node[1], color='red')
-                gmap.circle(node[0], node[1], node[c][2]*1000, face_alpha=0)
+            # Plot the values from each node
+            for packet in strike.packet_list:
+                gmap.marker(packet.gps_lat, packet.gps_long, color='red')
+                gmap.circle(packet.gps_lat, packet.gps_long, packet.distance*1000, face_alpha=0)
 
             # Draw the map:
-            logging.debug("Printing %s", self.nodes[0][c][0])
-            gmap.draw(f'./outputs/{self.dataset}/strike_{self.nodes[0][c][1]}.html')
-            c += 1
+            logging.debug("Printing strike from: %s", strike.utc)
+            gmap.draw(f'./outputs/{self.dataset}/strike_{strike.epoch}.html')
 
 if __name__ == "__main__":
     PostProcess()
