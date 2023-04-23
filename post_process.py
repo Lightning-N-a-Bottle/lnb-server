@@ -45,6 +45,10 @@ class Packet:
         self.gps_long = lon
         self.distance = dis
 
+    def to_string(self):
+        """ Prints a formatted string for debugging """
+        return f"({self.gps_lat},{self.gps_long})-{self.distance}"
+
 class Strike:
     """
     """
@@ -59,13 +63,19 @@ class Strike:
     def __init__(self, epoch: int) -> None:
         self.epoch = epoch
         timestruc: time.struct_time = time.localtime(epoch)
-        self.utc = f"{timestruc.tm_year}-{timestruc.tm_mon}-{timestruc.tm_mday}T{timestruc.tm_hour}:{timestruc.tm_min}:{timestruc.tm_sec}Z"
+        self.utc = f"{timestruc.tm_year:4d}-{timestruc.tm_mon:2d}-{timestruc.tm_mday:2d}T{timestruc.tm_hour:2d}:{timestruc.tm_min:2d}:{timestruc.tm_sec:2d}Z"
         self.day = self.utc[8:10]
         self.hour = self.utc[11:13]
 
     def add_event(self, pack: Packet):
         self.packet_list.append(pack)
-        
+
+    def to_string(self):
+        """ Prints a formatted string for debugging """
+        stk = f"{self.utc}: "
+        for pack in self.packet_list:
+            stk += pack.to_string() + ","
+        return stk
 
 class PostProcess:
     """ Generates a basic set of graphics from input lightning data csvs
@@ -110,6 +120,7 @@ class PostProcess:
         self.identify_strikes()
 
         logging.info("%d Strikes. Strike at %s has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
+        logging.info("First strike: %s", self.strikes[1].to_string())
 
         if not os.path.exists(f"./outputs/{self.dataset}"):
             os.mkdir(f"./outputs/{self.dataset}")
@@ -175,7 +186,13 @@ class PostProcess:
                 time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.start_time))
             )
         # Shows the timestamp range of the dataset as a whole
-        self.sum_df.sort_values("Epoch_Time")
+        self.sum_df.sort_values(by="Epoch_Time", inplace=True, )
+
+        # Debug
+        timelist = self.sum_df["Epoch_Time"].to_numpy()
+        logging.info("First time = %d", timelist[1])
+        logging.info("Last time = %d", timelist[len(timelist)-2])
+
         self.timespan = self.end_time-self.start_time
         logging.info("Dataset spans %f hours", self.timespan/3600)
 
@@ -192,7 +209,7 @@ class PostProcess:
         i = 0
         while i < len(self.sum_df):
             ep2 = self.sum_df["Epoch_Time"].to_numpy()[i]
-            logging.info("Index %d has time %f", i, ep2)
+            # logging.info("Index %d has time %f", i, ep2)
 
             # Create a new packet from the current entry
             pack = Packet(
@@ -202,10 +219,13 @@ class PostProcess:
             )
 
             # If enough time has passed from the previous strike, then create a new one
-            if ep1-ep2 > Min_Time:
+            if ep2-ep1 > Min_Time:
                 self.strikes.append(Strike(ep2))
+                ep1 = ep2
 
             # Add the packet data to the current Strike object
+            # logging.info("Length of strikelist = %d", len(self.strikes))
+            # logging.info("Length of sum_df = %d", len(self.sum_df))
             self.strikes[len(self.strikes)-1].add_event(pack)
             i += 1
 
