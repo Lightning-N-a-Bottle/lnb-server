@@ -77,9 +77,27 @@ class Strike:
 
         self.packet_list: List[Packet] = []
 
+    def only_disturbers(self) -> bool:
+        """ Checks to see if this Strike only contains disturbers
+        
+        TODO: Functionality can be added here in the future to change how we handle disturbers
+            - Maybe we want to only count a strike if there is at least 1 non-disturber
+            - Maybe we can count a strike if it is all disturbers,
+              but multiple nodes got the same disturber
+            - Maybe everything should be included
+        TODO: Is it better to check for disturbers here, or in the Packet creation?
+        """
+        check: bool = True
+        for pack in self.packet_list:
+            if not pack.is_disturber():
+                check = False
+        return check
+
     def to_filename(self) -> str:
         """ A convenient way to create an output filename for this specific strike """
         name: str = f"strike_{self.day}d{self.hour}h{self.minute}m{self.second}s"
+        if self.only_disturbers():
+            name += "_disturbers"
         return name
 
     def to_string(self) -> str:
@@ -166,7 +184,7 @@ class PostProcess:
             self.sum_df = pd.concat(objs=[self.sum_df, data_frame], ignore_index=True)
 
         # Sort the whole dataset and convert it to a numpy array
-        self.sum_df.sort_values(by="Epoch_Time", inplace=True, ignore_index=True)
+        self.sum_df.sort_values(by="UTC_Time", inplace=True, ignore_index=True)
         data = self.sum_df.to_numpy()
 
         # Identify unique nodes
@@ -206,12 +224,13 @@ class PostProcess:
             # The epoch time of the incoming packet
             utc: str = self.sum_df["UTC_Time"].to_numpy()[i]
 
-            # FIXME: Error handling for utc, this is only needed for datasets where the utc time is missing the leading zeros
+            # Error handling for utc, this is only needed for datasets where the utc time is missing the leading zeros
             Y, M, D = utc.split("T")[0].split("-")
             h, m, s = utc.split("T")[1].split(":")
             s = s.split("Z")[0]
             utc = f"{Y.zfill(4)}-{M.zfill(2)}-{D.zfill(2)}T{h.zfill(2)}:{m.zfill(2)}:{s.zfill(2)}Z"
 
+            # ep2 = int(s) + int(m)*60 + int(h)*3600 + int(D)*86400# + int(M)*2592000 + int(Y)*31104000
             ep2: int = self.sum_df["Epoch_Time"].to_numpy()[i]       # TODO: if we want to get rid of epoch we can just create this using utc times converted to int
 
             # Create a new packet from the current entry
@@ -410,8 +429,8 @@ class PostProcess:
         for strike in self.strikes:
             # Create the map plotter:
             # Mark the OMB building as the center of the map, zoom, and plot a range
-            omb_loc = (30.61771327808669, -96.33664482193207)
-            gmap = gmplot.GoogleMapPlotter(omb_loc[0], omb_loc[1], 10, apikey='')
+            omb_loc: tuple[float, float] = (30.61771327808669, -96.33664482193207)
+            gmap: gmplot.GoogleMapPlotter = gmplot.GoogleMapPlotter(omb_loc[0], omb_loc[1], 10, apikey='')
             gmap.marker(omb_loc[0], omb_loc[1], color='cornflowerblue')
             gmap.circle(omb_loc[0], omb_loc[1], 40000, face_alpha=0)
 
