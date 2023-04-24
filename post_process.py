@@ -11,7 +11,6 @@
 import logging
 import os
 import sys
-import time
 from tkinter import filedialog
 from typing import List
 
@@ -121,7 +120,6 @@ class PostProcess:
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
-
         self.read_csvs()
         self.identify_strikes()
 
@@ -190,7 +188,8 @@ class PostProcess:
     def identify_strikes(self) -> None:
         """ Populates the strikes list with Strike objects
 
-        This will measure in the dataset, and group together 
+        This will measure in the dataset, and group together entries that are within a certain
+        time range of each other.
         """
         # The epoch time of the current strike. Starts at the 0 so that a new Strike is created.
         ep1: int = 0
@@ -200,6 +199,13 @@ class PostProcess:
         while i < len(self.sum_df):
             # The epoch time of the incoming packet
             utc: str = self.sum_df["UTC_Time"].to_numpy()[i]
+
+            # FIXME: Error handling for utc, this is only needed for datasets where the utc time is missing the leading zeros
+            Y, M, D = utc.split("T")[0].split("-")
+            h, m, s = utc.split("T")[1].split(":")
+            s = s.split("Z")[0]
+            utc = f"{Y.zfill(4)}-{M.zfill(2)}-{D.zfill(2)}T{h.zfill(2)}:{m.zfill(2)}:{s.zfill(2)}Z"
+
             ep2: int = self.sum_df["Epoch_Time"].to_numpy()[i]       # TODO: if we want to get rid of epoch we can just create this using utc times converted to int
 
             # Create a new packet from the current entry
@@ -252,9 +258,6 @@ class PostProcess:
 
             # Append the total strikes this day to the total strikes chart
             tot_stk.append(sum(daily_stk))
-            # print(f"{daily_stk=}")
-            # print(f"{tot_stk=}")
-
 
             # Generate the daily plot
             plot_name: str = f"{self.dataset}_day{day}_Strikes-per-Hour"
@@ -291,6 +294,10 @@ class PostProcess:
         tot_tm: List[List[int]] = []
         tot_stk: List[List[int]] = []
 
+        # Range for cumulative plot
+        start_day = 0
+        end_day = 0
+
         # Append empty nested lists to separate by node
         for i in self.nodes:
             tot_tm.append([])
@@ -318,6 +325,10 @@ class PostProcess:
                 # Acquire graphable time in seconds
                 day_time: int = strike.second + strike.minute*60 + strike.hour*3600
                 trip_time: int = day_time + strike.day*86400
+                if start_day == 0 or start_day > strike.day:
+                    start_day = strike.day
+                if end_day < strike.day:
+                    end_day = strike.day
 
                 # Append data entries
                 for packet in strike.packet_list:
@@ -340,7 +351,7 @@ class PostProcess:
             while it < len(daily_tm):
                 plt.scatter(x=daily_tm[it], y=daily_stk[it], color=color_list[it], label=self.nodes[it])
                 it += 1
-            plt.xlabel("Time (sec)")
+            plt.xlabel("Time (Hours)")
             plt.xticks(ticks=seconds_h, labels=hours)
             plt.ylabel("Distance (km)")
             plt.title(plot_name)
@@ -348,26 +359,22 @@ class PostProcess:
                 loc="upper right",
                 fancybox=True,
                 shadow=True,
-                ncol=2,
+                ncol=1,
             )
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
             plt.close()
 
         # Generate the range for xticks
-        days: range = range(self.start_time,self.end_time+1)
-        seconds: range = range(self.start_time*86400,(self.end_time+1)*86400,86400)
-        print(f"{days=}")
-        print(f"{seconds=}")
+        days: range = range(start_day,end_day+1)
+        seconds: range = range(start_day*86400, (end_day*86400)+86400, 86400)
 
         # Generate the Scatterplot for the entire dataset
         plot_name: str = f"{self.dataset}_Total_Scatter"
         it = 0
-        print("length of scatters=", len(tot_tm))
         while it < len(tot_tm):
-            print("num of elements=", len(tot_tm[it]))
             plt.scatter(x=tot_tm[it], y=tot_stk[it], color=color_list[it], label=self.nodes[it])
             it += 1
-        plt.xlabel("Time (sec)")
+        plt.xlabel("Time (Days)")
         plt.xticks(ticks=seconds, labels=days)
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
@@ -375,7 +382,7 @@ class PostProcess:
             loc="upper right",
             fancybox=True,
             shadow=True,
-            ncol=2,
+            ncol=1,
         )
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
         plt.close()
