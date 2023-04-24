@@ -19,7 +19,8 @@ import gmplot
 import matplotlib.pyplot as plt
 import pandas as pd
 
-Min_Time = .5
+STRIKE_TIME = .5
+EXCLUDE_DISTURBERS = True
 
 color_dict = {
     "NODE1": (0, 0, 0),
@@ -60,7 +61,7 @@ class Strike:
     epoch: float = 0
     packet_list: List[Packet] = []
 
-    def __init__(self, epoch: int) -> None:
+    def __init__(self, epoch: float) -> None:
         self.epoch = epoch
         timestruc: time.struct_time = time.localtime(epoch)
         self.utc = f"{timestruc.tm_year:4d}-{timestruc.tm_mon:2d}-{timestruc.tm_mday:2d}T{timestruc.tm_hour:2d}:{timestruc.tm_min:2d}:{timestruc.tm_sec:2d}Z"
@@ -126,7 +127,7 @@ class PostProcess:
             os.mkdir(f"./outputs/{self.dataset}")
 
         # self.generate_bar()
-        # self.generate_scatter()
+        self.generate_scatter()
         self.generate_gmap()
 
     def read_csvs(self):
@@ -138,7 +139,6 @@ class PostProcess:
         """
         # Select the dataset to read from, should just be a folder filled with csvs
         logging.info("Select storm directory")
-
         data_dir = filedialog.askdirectory()
         if data_dir == "":
             logging.error("No file specified! Exiting...")
@@ -146,7 +146,7 @@ class PostProcess:
         self.dataset = os.path.basename(data_dir)
 
         # Debugging
-        logging.info("Directory = %s", self.dataset)
+        logging.info("Dataset = %s", self.dataset)
         logging.debug("Contents = %s", os.listdir(data_dir))
 
         # Read in data from each file in the directory
@@ -201,15 +201,14 @@ class PostProcess:
 
 
         """
-        # Grab the first time in the sorted dataset and append to strikelist
-        ep1 = self.sum_df["Epoch_Time"].to_numpy()[0]
-        self.strikes.append(Strike(ep1))
+        # The epoch time of the current strike
+        ep1 = 0
 
         # Loop through each data entry and decide where to place it
         i = 0
         while i < len(self.sum_df):
+            # The epoch time of the incoming packet
             ep2 = self.sum_df["Epoch_Time"].to_numpy()[i]
-            # logging.info("Index %d has time %f", i, ep2)
 
             # Create a new packet from the current entry
             pack = Packet(
@@ -219,13 +218,11 @@ class PostProcess:
             )
 
             # If enough time has passed from the previous strike, then create a new one
-            if ep2-ep1 > Min_Time:
-                self.strikes.append(Strike(ep2))
+            if ep2-ep1 > STRIKE_TIME:
                 ep1 = ep2
+                self.strikes.append(Strike(ep1))
 
             # Add the packet data to the current Strike object
-            # logging.info("Length of strikelist = %d", len(self.strikes))
-            # logging.info("Length of sum_df = %d", len(self.sum_df))
             self.strikes[len(self.strikes)-1].add_event(pack)
             i += 1
 
@@ -243,46 +240,98 @@ class PostProcess:
             Returns:
                 - None
         """
-        zones = 24
-        interval = self.timespan/zones
-        sum_stk = []
-        time_stk = []
-        for i in range(zones+1):
-            sum_stk.append(0)
-            time_stk.append(self.start_time+interval*i)
+        data = self.sum_df.to_numpy()
 
-        for node in self.nodes:
-            local_stk = []
-            for i in range(zones+1):
-                local_stk.append(0)
+        hours = range(0,24)
+        print(hours)
 
-            c = 2
-            while c < len(node):
-                scale = int((node[c][1]-self.start_time)/interval)
+        start_day = int(data[0][0][8:10])
+        stop_day = int(data[len(data)-1][0][8:10])
+        days = range(start_day,stop_day)
+        print(days)
 
-                sum_stk[scale] += 1
-                local_stk[scale] += 1
+        tot_tm: List[str] = []
+        tot_stk: List[int] = []
+
+        c = 0
+        while c < len(data):
+            day: int = int(data[c][0][8:10])
+            daily_tm: List[str] = []
+            daily_stk: List[int] = []
+
+            while int(data[c][0][8:10]) == day:
+                # Acquire graphable time in seconds
+                tm = int(data[c][0][17:19]) + int(data[c][0][14:16])*60 + int(data[c][0][11:13])*3600
+
+                # Append data entries
+                daily_tm.append(tm)
+                tot_tm.append(tm + (start_day-int(data[c][0][8:10]))*86400)
+                daily_stk.append(int(data[c][4]))
+                tot_stk.append(int(data[c][4]))
 
                 c += 1
 
-            # Generate the Scatterplot from only the current node
             # Generate the daily plot
-            plot_name = f"{self.dataset}_Strikes-per-Hour_({day})"
-            bar = plt.bar(time_stk, local_stk, width=interval)
+            plot_name = f"{self.dataset}_Strikes-per-Hour_{day=}"
+            plt.bar(daily_tm, daily_stk, width=3600)
             plt.xlabel("Time Interval (sec)")
-            plt.xticks(range(0,24))
+            plt.xticks(ticks=hours*3600, labels=hours)
             plt.ylabel("Strikes per Hour")
             plt.title(plot_name)
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
             plt.close()
 
+
         # Generate the Scatterplot for the entire dataset
         plot_name = f"{self.dataset}_Strikes-per-Day"
+        plt.bar(tot_tm, tot_stk, width=86400)
         plt.xlabel("Day")
         plt.ylabel("Strike Count")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
         plt.close()
+
+
+        # zones = 24
+        # interval = self.timespan/zones
+        # sum_stk = []
+        # time_stk = []
+        # for i in range(zones+1):
+        #     sum_stk.append(0)
+        #     time_stk.append(self.start_time+interval*i)
+
+        # for node in self.nodes:
+        #     local_stk = []
+        #     for i in range(zones+1):
+        #         local_stk.append(0)
+
+        #     c = 2
+        #     while c < len(node):
+        #         scale = int((node[c][1]-self.start_time)/interval)
+
+        #         sum_stk[scale] += 1
+        #         local_stk[scale] += 1
+
+        #         c += 1
+
+        #     # Generate the daily plot
+        #     plot_name = f"{self.dataset}_Strikes-per-Hour_({day})"
+        #     bar = plt.bar(time_stk, local_stk, width=interval)
+        #     plt.xlabel("Time Interval (sec)")
+        #     plt.xticks(range(0,24))
+        #     plt.ylabel("Strikes per Hour")
+        #     plt.title(plot_name)
+        #     plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
+        #     plt.close()
+
+        # # Generate the Scatterplot for the entire dataset
+        # plot_name = f"{self.dataset}_Strikes-per-Day"
+        # bar = plt.bar(time_stk, local_stk, width=interval)
+        # plt.xlabel("Day")
+        # plt.ylabel("Strike Count")
+        # plt.title(plot_name)
+        # plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
+        # plt.close()
 
     def generate_scatter(self):
         """ Generates a selection of scatterplots of when lightning was detected and how far
@@ -290,35 +339,95 @@ class PostProcess:
             This should generate one scatterplot per node, and a scatterplot that includes
             all nodes in the current dataset.
         """
+        # nodes: List[str] = []
+        # c = 0
+        # while c < len(data):
+        #     gps = f"({data[c][2]},{data[c][3]})"
+        #     try:
+        #         n = nodes.index(gps)
+        #     except ValueError:
+        #         nodes.append(gps)
+        #     c += 1
+        # print(nodes)
 
-        # Organize the data from each node
-        for strike in self.strikes:
-            c = 0
-            while c < len(node):
-                sum_tm.append(node[c][1])
-                local_tm.append(node[c][1])
+        data = self.sum_df.to_numpy()
 
-                sum_sd.append(node[c][2])
-                local_sd.append(node[c][2])
+        hours = range(0,24)
+        print(hours)
+
+        start_day = int(data[0][0][8:10])
+        stop_day = int(data[len(data)-1][0][8:10])
+        days = range(start_day,stop_day)
+        print(days)
+
+        tot_tm: List[str] = []
+        tot_stk: List[int] = []
+
+        c = 0
+        while c < len(data):
+            day: int = int(data[c][0][8:10])
+            daily_tm: List[str] = []
+            daily_stk: List[int] = []
+
+            while int(data[c][0][8:10]) == day:
+                # Acquire graphable time in seconds
+                tm = int(data[c][0][17:19]) + int(data[c][0][14:16])*60 + int(data[c][0][11:13])*3600
+
+                # Append data entries
+                daily_tm.append(tm)
+                tot_tm.append(tm + (start_day-int(data[c][0][8:10]))*86400)
+                daily_stk.append(int(data[c][4]))
+                tot_stk.append(int(data[c][4]))
+
                 c += 1
-
+                
             # Generate the Scatterplot from only the current node
-            plot_name = f"{self.dataset}_Scatter_({node[0]}_{node[1]})"
-            plt.scatter(local_tm, local_sd)
+            plot_name = f"{self.dataset}_Scatter_{day=}"
+            plt.scatter(daily_tm, daily_stk)
             plt.xlabel("Time (sec)")
             plt.ylabel("Distance (km)")
             plt.title(plot_name)
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
             plt.close()
-
+            
         # Generate the Scatterplot for the entire dataset
         plot_name = f"{self.dataset}_Sum_Scatter"
-        plt.scatter(sum_tm, sum_sd, )
+        plt.scatter(tot_tm, tot_stk)
         plt.xlabel("Time (sec)")
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
         plt.close()
+        # Assemble the data into time
+        # for strike in self.strikes:
+        #     for packet in strike.packet_list:
+            
+        #     c = 0
+        #     while c < len(node):
+        #         sum_tm.append(node[c][1])
+        #         day_tm.append(node[c][1])
+
+        #         sum_sd.append(node[c][2])
+        #         day_sd.append(node[c][2])
+        #         c += 1
+
+        #     # Generate the Scatterplot from only the current node
+        #     plot_name = f"{self.dataset}_Scatter_({node[0]}_{node[1]})"
+        #     plt.scatter(day_tm, day_sd)
+        #     plt.xlabel("Time (sec)")
+        #     plt.ylabel("Distance (km)")
+        #     plt.title(plot_name)
+        #     plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
+        #     plt.close()
+
+        # Generate the Scatterplot for the entire dataset
+        # plot_name = f"{self.dataset}_Sum_Scatter"
+        # plt.scatter(data[], sum_sd, )
+        # plt.xlabel("Time (sec)")
+        # plt.ylabel("Distance (km)")
+        # plt.title(plot_name)
+        # plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
+        # plt.close()
 
     def generate_gmap(self):
         """ Generate the plot of all nodes with the range of strikes, using the Google Maps API
