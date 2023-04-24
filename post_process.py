@@ -53,13 +53,6 @@ class Packet:
 class Strike:
     """
     """
-    utc: str = ""
-    day: int = 0
-    hour: int = 0
-    minute: int = 0
-    second: int = 0
-    epoch: float = 0
-    packet_list: List[Packet] = []
 
     def __init__(self, epoch: float) -> None:
         self.epoch = epoch
@@ -68,8 +61,7 @@ class Strike:
         self.day = self.utc[8:10]
         self.hour = self.utc[11:13]
 
-    def add_event(self, pack: Packet):
-        self.packet_list.append(pack)
+        self.packet_list: List[Packet] = []
 
     def to_string(self):
         """ Prints a formatted string for debugging """
@@ -121,7 +113,7 @@ class PostProcess:
         self.identify_strikes()
 
         logging.info("%d Strikes. Strike at %s has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
-        logging.info("First strike: %s", self.strikes[1].to_string())
+        logging.info("First strike: %s", self.strikes[0].to_string())
 
         if not os.path.exists(f"./outputs/{self.dataset}"):
             os.mkdir(f"./outputs/{self.dataset}")
@@ -212,9 +204,9 @@ class PostProcess:
 
             # Create a new packet from the current entry
             pack = Packet(
-                self.sum_df["GPS_Latitude"][i],
-                self.sum_df["GPS_Longitude"][i],
-                self.sum_df["Distance"][i]
+                self.sum_df["GPS_Latitude"].to_numpy()[i],
+                self.sum_df["GPS_Longitude"].to_numpy()[i],
+                self.sum_df["Distance"].to_numpy()[i]
             )
 
             # If enough time has passed from the previous strike, then create a new one
@@ -223,7 +215,8 @@ class PostProcess:
                 self.strikes.append(Strike(ep1))
 
             # Add the packet data to the current Strike object
-            self.strikes[len(self.strikes)-1].add_event(pack)
+            last = len(self.strikes)-1
+            self.strikes[last].packet_list.append(pack)
             i += 1
 
     def generate_bar(self):
@@ -274,7 +267,7 @@ class PostProcess:
             # Generate the daily plot
             plot_name = f"{self.dataset}_Strikes-per-Hour_day{day}"
             plt.bar(daily_tm, daily_stk, width=3600)
-            plt.xlabel("Time Interval (sec)")
+            plt.xlabel("Time Interval (hours)")
             plt.xticks(ticks=seconds_h, labels=hours)
             plt.ylabel("Strikes per Hour")
             plt.title(plot_name)
@@ -285,21 +278,12 @@ class PostProcess:
         # Generate the Scatterplot for the entire dataset
         plot_name = f"{self.dataset}_Strikes-per-Day"
         plt.bar(tot_tm, tot_stk, width=86400)
-        plt.xlabel("Strikes per Day")
+        plt.xlabel("Time Interval (days)")
         plt.xticks(ticks=seconds_d, labels=days)
-        plt.ylabel("Strike Count")
+        plt.ylabel("Strikes per Day")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
         plt.close()
-
-
-        # zones = 24
-        # interval = self.timespan/zones
-        # sum_stk = []
-        # time_stk = []
-        # for i in range(zones+1):
-        #     sum_stk.append(0)
-        #     time_stk.append(self.start_time+interval*i)
 
         # for node in self.nodes:
         #     local_stk = []
@@ -314,25 +298,6 @@ class PostProcess:
         #         local_stk[scale] += 1
 
         #         c += 1
-
-        #     # Generate the daily plot
-        #     plot_name = f"{self.dataset}_Strikes-per-Hour_({day})"
-        #     bar = plt.bar(time_stk, local_stk, width=interval)
-        #     plt.xlabel("Time Interval (sec)")
-        #     plt.xticks(range(0,24))
-        #     plt.ylabel("Strikes per Hour")
-        #     plt.title(plot_name)
-        #     plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
-        #     plt.close()
-
-        # # Generate the Scatterplot for the entire dataset
-        # plot_name = f"{self.dataset}_Strikes-per-Day"
-        # bar = plt.bar(time_stk, local_stk, width=interval)
-        # plt.xlabel("Day")
-        # plt.ylabel("Strike Count")
-        # plt.title(plot_name)
-        # plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
-        # plt.close()
 
     def generate_scatter(self):
         """ Generates a selection of scatterplots of when lightning was detected and how far
@@ -375,6 +340,8 @@ class PostProcess:
                 tm = int(data[c][0][17:19]) + int(data[c][0][14:16])*60 + int(data[c][0][11:13])*3600
 
                 # Append data entries
+                # gps = f"({data[c][2]},{data[c][3]})"
+                # if 
                 daily_tm.append(tm)
                 tot_tm.append(tm + (start_day-int(data[c][0][8:10]))*86400)
                 daily_stk.append(int(data[c][4]))
@@ -393,44 +360,16 @@ class PostProcess:
             plt.close()
             
         # Generate the Scatterplot for the entire dataset
-        plot_name = f"{self.dataset}_Sum_Scatter"
-        plt.scatter(tot_tm, tot_stk)
+        plot_name = f"{self.dataset}_Scatter_Sum"
+        plt.scatter(tot_tm, tot_stk, color="Blue")
+        # plt.scatter(tot_tm2, tot_stk2, color="Red")
+        # plt.scatter(tot_tm3, tot_stk3, color="Green")
         plt.xlabel("Time (sec)")
         plt.xticks(ticks=seconds_d, labels=days)
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
         plt.close()
-        # Assemble the data into time
-        # for strike in self.strikes:
-        #     for packet in strike.packet_list:
-            
-        #     c = 0
-        #     while c < len(node):
-        #         sum_tm.append(node[c][1])
-        #         day_tm.append(node[c][1])
-
-        #         sum_sd.append(node[c][2])
-        #         day_sd.append(node[c][2])
-        #         c += 1
-
-        #     # Generate the Scatterplot from only the current node
-        #     plot_name = f"{self.dataset}_Scatter_({node[0]}_{node[1]})"
-        #     plt.scatter(day_tm, day_sd)
-        #     plt.xlabel("Time (sec)")
-        #     plt.ylabel("Distance (km)")
-        #     plt.title(plot_name)
-        #     plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
-        #     plt.close()
-
-        # Generate the Scatterplot for the entire dataset
-        # plot_name = f"{self.dataset}_Sum_Scatter"
-        # plt.scatter(data[], sum_sd, )
-        # plt.xlabel("Time (sec)")
-        # plt.ylabel("Distance (km)")
-        # plt.title(plot_name)
-        # plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
-        # plt.close()
 
     def generate_gmap(self):
         """ Generate the plot of all nodes with the range of strikes, using the Google Maps API
