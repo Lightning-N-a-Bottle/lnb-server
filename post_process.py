@@ -252,7 +252,7 @@ class PostProcess:
         while c < len(self.strikes):
             # Generate the daily list, this will always be size 24 to measure hourly values
             # This value is reset every time we encounter a new day in the dataset
-            daily_stk: List[int] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+            daily_stk: List[int] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
             # Day is the current day, but we want to create a chart for the whole day before progressing
             # This value is reset every time we encounter a new day in the dataset
@@ -270,7 +270,7 @@ class PostProcess:
 
             # Generate the daily plot
             plot_name = f"{self.dataset}_day{day}_Strikes-per-Hour"
-            hours = range(0,24)
+            hours = range(0,25)
             plt.bar(hours, daily_stk, width=1, align='edge')
             plt.xlabel("Time Interval (hours)")
             plt.xticks(ticks=hours, labels=hours)
@@ -357,8 +357,8 @@ class PostProcess:
                 c += 1
 
             # Generate the range for xticks
-            hours = range(0,24)
-            seconds_h = range(0,86400,3600)
+            hours = range(0,25)
+            seconds_h = range(0,86400+3600,3600)
 
             # Generate the Scatterplot from only the current node
             plot_name = f"{self.dataset}_day{day}_Scatter"
@@ -370,30 +370,27 @@ class PostProcess:
             plt.xticks(ticks=seconds_h, labels=hours)
             plt.ylabel("Distance (km)")
             plt.title(plot_name)
+            plt.legend()
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
             plt.close()
 
-        # Generate the range for xticks FIXME: day range is bad somehow
-        # hours = range(0,24)
-        # seconds_h = range(0,86400,3600)
+        # Generate the range for xticks
         start_day = int(data[0][0][8:10])
         stop_day = int(data[len(data)-1][0][8:10])
-        days = range(start_day,stop_day)
-        seconds_d = range(0,(stop_day-start_day)*86400,86400)
-        logging.info("Data: start_day=%d\t| stop_day=%d", start_day, stop_day)
-        print(f"{days=}")
+        days = range(start_day,stop_day+1)
+        seconds_d = range(start_day*86400,(stop_day+1)*86400,86400)
 
         # Generate the Scatterplot for the entire dataset
         plot_name = f"{self.dataset}_Total_Scatter"
         it = 0
         while it < len(tot_tm):
             plt.scatter(x=tot_tm[it], y=tot_stk[it], color=color_list[it])
-            logging.info("%d Minimum Scatter time: %d\t| Maximum Scatter Time: %d", it, min(tot_tm[it]), max(tot_tm[it]))
             it += 1
         plt.xlabel("Time (sec)")
         plt.xticks(ticks=seconds_d, labels=days)
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
+        plt.legend()
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
         plt.close()
 
