@@ -39,10 +39,16 @@ class Packet:
 
     Contains the gps coordinates of the node, and the strike distance recorded
     """
-    def __init__(self, lat, lon, dis) -> None:
-        self.gps_lat = lat
-        self.gps_long = lon
-        self.distance = dis
+    def __init__(self, lat: float, lon: float, dis: int) -> None:
+        self.gps_lat: float = lat
+        self.gps_long: float = lon
+        self.distance: int = min(dis, 40)
+
+    def is_disturber(self) -> bool:
+        """ Identify whether this packet is a disturber or not """
+        if self.distance >= 40:
+            return True
+        return False
 
     def to_string(self) -> str:
         """ A convenient way to debug the contents of the Packet formatted into a string """
@@ -214,6 +220,11 @@ class PostProcess:
                 self.sum_df["GPS_Longitude"].to_numpy()[i],
                 self.sum_df["Distance"].to_numpy()[i]
             )
+
+            # This will skip the current packet if it is a disturber
+            if EXCLUDE_DISTURBERS and pack.is_disturber():
+                i += 1
+                continue
 
             # If enough time has passed from the previous strike, then create a new one
             if ep2-ep1 > STRIKE_TIME:
