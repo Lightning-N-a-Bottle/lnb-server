@@ -126,7 +126,7 @@ class PostProcess:
         if not os.path.exists(f"./outputs/{self.dataset}"):
             os.mkdir(f"./outputs/{self.dataset}")
 
-        # self.generate_bar()
+        self.generate_bar()
         self.generate_scatter()
         self.generate_gmap()
 
@@ -243,12 +243,12 @@ class PostProcess:
         data = self.sum_df.to_numpy()
 
         hours = range(0,24)
-        print(hours)
+        seconds_h = range(0,86400,3600)
 
         start_day = int(data[0][0][8:10])
         stop_day = int(data[len(data)-1][0][8:10])
         days = range(start_day,stop_day)
-        print(days)
+        seconds_d = range(0,(stop_day-start_day)*86400,86400)
 
         tot_tm: List[str] = []
         tot_stk: List[int] = []
@@ -259,7 +259,7 @@ class PostProcess:
             daily_tm: List[str] = []
             daily_stk: List[int] = []
 
-            while int(data[c][0][8:10]) == day:
+            while c < len(data) and int(data[c][0][8:10]) == day:
                 # Acquire graphable time in seconds
                 tm = int(data[c][0][17:19]) + int(data[c][0][14:16])*60 + int(data[c][0][11:13])*3600
 
@@ -272,10 +272,10 @@ class PostProcess:
                 c += 1
 
             # Generate the daily plot
-            plot_name = f"{self.dataset}_Strikes-per-Hour_{day=}"
+            plot_name = f"{self.dataset}_Strikes-per-Hour_day{day}"
             plt.bar(daily_tm, daily_stk, width=3600)
             plt.xlabel("Time Interval (sec)")
-            plt.xticks(ticks=hours*3600, labels=hours)
+            plt.xticks(ticks=seconds_h, labels=hours)
             plt.ylabel("Strikes per Hour")
             plt.title(plot_name)
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
@@ -285,7 +285,8 @@ class PostProcess:
         # Generate the Scatterplot for the entire dataset
         plot_name = f"{self.dataset}_Strikes-per-Day"
         plt.bar(tot_tm, tot_stk, width=86400)
-        plt.xlabel("Day")
+        plt.xlabel("Strikes per Day")
+        plt.xticks(ticks=seconds_d, labels=days)
         plt.ylabel("Strike Count")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
@@ -353,12 +354,12 @@ class PostProcess:
         data = self.sum_df.to_numpy()
 
         hours = range(0,24)
-        print(hours)
+        seconds_h = range(0,86400,3600)
 
         start_day = int(data[0][0][8:10])
         stop_day = int(data[len(data)-1][0][8:10])
         days = range(start_day,stop_day)
-        print(days)
+        seconds_d = range(0,(stop_day-start_day)*86400,86400)
 
         tot_tm: List[str] = []
         tot_stk: List[int] = []
@@ -369,7 +370,7 @@ class PostProcess:
             daily_tm: List[str] = []
             daily_stk: List[int] = []
 
-            while int(data[c][0][8:10]) == day:
+            while c < len(data) and int(data[c][0][8:10]) == day:
                 # Acquire graphable time in seconds
                 tm = int(data[c][0][17:19]) + int(data[c][0][14:16])*60 + int(data[c][0][11:13])*3600
 
@@ -382,9 +383,10 @@ class PostProcess:
                 c += 1
                 
             # Generate the Scatterplot from only the current node
-            plot_name = f"{self.dataset}_Scatter_{day=}"
+            plot_name = f"{self.dataset}_Scatter_day{day}"
             plt.scatter(daily_tm, daily_stk)
             plt.xlabel("Time (sec)")
+            plt.xticks(ticks=seconds_h, labels=hours)
             plt.ylabel("Distance (km)")
             plt.title(plot_name)
             plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
@@ -394,6 +396,7 @@ class PostProcess:
         plot_name = f"{self.dataset}_Sum_Scatter"
         plt.scatter(tot_tm, tot_stk)
         plt.xlabel("Time (sec)")
+        plt.xticks(ticks=seconds_d, labels=days)
         plt.ylabel("Distance (km)")
         plt.title(plot_name)
         plt.savefig(f"./outputs/{self.dataset}/{plot_name}.png")
