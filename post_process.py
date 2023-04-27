@@ -13,13 +13,14 @@ import os
 import sys
 from tkinter import filedialog
 from typing import List
+from datetime import datetime
 
 import gmplot
 import matplotlib.pyplot as plt
 import pandas as pd
 
 STRIKE_TIME: float = .5
-EXCLUDE_DISTURBERS: bool = True
+EXCLUDE_DISTURBERS: bool = False
 
 color_list: list[str] = [
     "Blue",
@@ -68,7 +69,7 @@ class Strike:
 
     def __init__(self, utc: str) -> None:
         self.utc: str = utc
-        
+
         # Extract time values from utc for later math
         self.day: int = int(self.utc[8:10])
         self.hour: int = int(self.utc[11:13])
@@ -138,6 +139,11 @@ class PostProcess:
     end_time: int = 0
     sum_df: pd.DataFrame = pd.DataFrame()
 
+    valid_packets: int = 0
+    valid_strikes: int = 0
+    disturber_packets: int = 0
+    disturber_strikes: int = 0
+
     def __init__(self) -> None:
         # Initialize Logger
         fmt_main = "%(asctime)s | %(levelname)s | LNB_Post:\t%(message)s"
@@ -147,8 +153,16 @@ class PostProcess:
         self.read_csvs()
         self.identify_strikes()
 
-        logging.info("%d Strikes. Strike at %s has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
+        for strike in self.strikes:
+            if strike.only_disturbers():
+                self.disturber_strikes += 1
+            else:
+                self.valid_strikes += 1
+
+        logging.info("%d Total Strikes. Strike at %s has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
         logging.info("First strike: %s", self.strikes[0].to_string())
+        logging.info("%d Packets were valid, while %d were marked as disturbers", self.valid_packets, self.disturber_packets)
+        logging.info("%d Strikes contained precise data, while %d only had disturbers", self.valid_strikes, self.disturber_strikes)
 
         # Create Output Directory
         if not os.path.exists(f"./outputs/{self.dataset}"):
@@ -193,7 +207,7 @@ class PostProcess:
         while c < len(data):
             gps = f"({data[c][2]},{data[c][3]})"
             try:
-                n = self.nodes.index(gps)
+                self.nodes.index(gps)
             except ValueError:
                 self.nodes.append(gps)
             c += 1
@@ -224,14 +238,15 @@ class PostProcess:
             # The epoch time of the incoming packet
             utc: str = self.sum_df["UTC_Time"].to_numpy()[i]
 
-            # Error handling for utc, this is only needed for datasets where the utc time is missing the leading zeros
+            # Error handling for utc, only needed for datasets where utc is missing leading zeros
             Y, M, D = utc.split("T")[0].split("-")
             h, m, s = utc.split("T")[1].split(":")
             s = s.split("Z")[0]
             utc = f"{Y.zfill(4)}-{M.zfill(2)}-{D.zfill(2)}T{h.zfill(2)}:{m.zfill(2)}:{s.zfill(2)}Z"
 
-            # ep2 = int(s) + int(m)*60 + int(h)*3600 + int(D)*86400# + int(M)*2592000 + int(Y)*31104000
-            ep2: int = self.sum_df["Epoch_Time"].to_numpy()[i]       # TODO: if we want to get rid of epoch we can just create this using utc times converted to int
+            # ep2: int = self.sum_df["Epoch_Time"].to_numpy()[i]
+            dtm: datetime = datetime.strptime(utc, '%Y-%m-%dT%H:%M:%SZ')
+            ep2: int = datetime.timestamp(dtm)
 
             # Create a new packet from the current entry
             pack: Packet = Packet(
@@ -242,13 +257,19 @@ class PostProcess:
 
             # This will skip the current packet if it is a disturber
             if EXCLUDE_DISTURBERS and pack.is_disturber():
+                logging.debug("Skipping disturber: %d...", i)
                 i += 1
+                self.disturber_packets += 1
                 continue
+            else:
+                self.valid_packets += 1
 
             # If enough time has passed from the previous strike, then create a new one
             if ep2-ep1 > STRIKE_TIME:
                 ep1 = ep2
                 self.strikes.append(Strike(utc))
+            else:
+                logging.debug("Merging %d into strike %d:\t%s", i, len(self.strikes), utc)
 
             # Add the packet data to the current Strike object
             last: int = len(self.strikes)-1
