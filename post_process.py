@@ -53,7 +53,7 @@ class Packet:
 
     def to_string(self) -> str:
         """ A convenient way to debug the contents of the Packet formatted into a string """
-        return f"({self.gps_lat},{self.gps_long})-{self.distance}"
+        return f" ({self.gps_lat},{self.gps_long})@{self.distance}km"
 
 class Strike:
     """ A Strike object represents all the measured data from one strike compiled together
@@ -106,7 +106,7 @@ class Strike:
         stk: str = f"{self.utc}: "
         for pack in self.packet_list:
             stk += pack.to_string() + ","
-        return stk
+        return stk[:len(stk)-1]
 
 class PostProcess:
     """ Generates a basic set of graphics from input lightning data csvs
@@ -153,14 +153,16 @@ class PostProcess:
         self.read_csvs()
         self.identify_strikes()
 
+        # Count the total valid and disturber strikes
         for strike in self.strikes:
             if strike.only_disturbers():
                 self.disturber_strikes += 1
             else:
                 self.valid_strikes += 1
 
-        logging.info("%d Total Strikes. Strike at %s has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
-        logging.info("First strike: %s", self.strikes[0].to_string())
+        # Terminal Diagnostic and Debugging statistics
+        logging.info("%d Total Strikes. Strike at [%s] has %d elements", len(self.strikes), self.strikes[0].utc, len(self.strikes[0].packet_list))
+        logging.info("First strike: [%s]", self.strikes[0].to_string())
         logging.info("%d Packets were valid, while %d were marked as disturbers", self.valid_packets, self.disturber_packets)
         logging.info("%d Strikes contained precise data, while %d only had disturbers", self.valid_strikes, self.disturber_strikes)
 
@@ -198,7 +200,7 @@ class PostProcess:
             self.sum_df = pd.concat(objs=[self.sum_df, data_frame], ignore_index=True)
 
         # Sort the whole dataset and convert it to a numpy array
-        self.sum_df.sort_values(by="UTC_Time", inplace=True, ignore_index=True)
+        self.sum_df.sort_values(by="Epoch_Time", inplace=True, ignore_index=True)
         data = self.sum_df.to_numpy()
 
         # Identify unique nodes
@@ -255,11 +257,11 @@ class PostProcess:
                 self.sum_df["Distance"].to_numpy()[i]
             )
 
-            # This will skip the current packet if it is a disturber
+            # This will skip the current packet if it is a disturber, counts total valid/disturber
             if EXCLUDE_DISTURBERS and pack.is_disturber():
                 logging.debug("Skipping disturber: %d...", i)
-                i += 1
                 self.disturber_packets += 1
+                i += 1
                 continue
             else:
                 self.valid_packets += 1
