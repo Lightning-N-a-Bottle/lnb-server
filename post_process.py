@@ -11,9 +11,9 @@
 import logging
 import os
 import sys
+from datetime import datetime
 from tkinter import filedialog
 from typing import List
-from datetime import datetime
 
 import gmplot
 import matplotlib.pyplot as plt
@@ -244,10 +244,19 @@ class PostProcess:
             Y, M, D = utc.split("T")[0].split("-")
             h, m, s = utc.split("T")[1].split(":")
             s = s.split("Z")[0]
-            utc = f"{Y.zfill(4)}-{M.zfill(2)}-{D.zfill(2)}T{h.zfill(2)}:{m.zfill(2)}:{s.zfill(2)}Z"
+            # FIXME: This line (and section in general) is really bad, in the future all the
+            # typecasting and zfill should be removed, but I had to add this to make our code
+            # compatible with some older datasets that we had since we couldn't get new data in
+            # time for the report, with updated lnb-node code the utc string should work directly
+            # from the self.sum_df dataframe
+            utc = f"{str(int(Y)).zfill(4)}-{str(int(M)).zfill(2)}-{str(int(D)).zfill(2)}T{str(int(h)).zfill(2)}:{str(int(m)).zfill(2)}:{str(int(s)).zfill(2)}Z"
 
             # ep2: int = self.sum_df["Epoch_Time"].to_numpy()[i]
+            # try:
             dtm: datetime = datetime.strptime(utc, '%Y-%m-%dT%H:%M:%SZ')
+            # except ValueError:
+            #     logging.error("Time %s error", utc)
+            #     logging.error("%s-%s-%s %s:%s:%s", Y.zfill(4), M.zfill(2), D, h, m, s)
             ep2: int = datetime.timestamp(dtm)
 
             # Create a new packet from the current entry
