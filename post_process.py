@@ -8,12 +8,13 @@
         - https://pypi.org/project/gmplot/
         - https://github.com/gmplot/gmplot/wiki
 """
+import datetime
 import logging
 import os
 import sys
 from datetime import datetime
 from tkinter import filedialog
-from typing import List
+from typing import Dict, List
 
 import gmplot
 import matplotlib.pyplot as plt
@@ -21,6 +22,7 @@ import pandas as pd
 
 STRIKE_TIME: float = .5
 EXCLUDE_DISTURBERS: bool = False
+UTC_CORRECTION: bool = True
 
 color_list: list[str] = [
     "Blue",
@@ -133,6 +135,7 @@ class PostProcess:
     """
     # Define class constants
     nodes: List[str] = []
+    node_names: Dict[str, str] = {}
     strikes: List[Strike] = []
     dataset: str = ""
     start_time: int = 0
@@ -196,7 +199,44 @@ class PostProcess:
 
         # Read in data from each csv in the dataset, then compile into one DataFrame
         for datafile in os.listdir(data_dir):
+            logging.info("Reading in %s...", datafile)
+            name, start_time, gps_name = datafile.split(sep="_")
+            gps_name = gps_name[:len(gps_name)-4]
+            self.node_names[gps_name] = name
+            orig_ts = int(start_time)
+
             data_frame: pd.DataFrame = pd.read_csv(filepath_or_buffer=data_dir+"/"+datafile, header=0)
+
+            # If needed, correct the time values here:
+            if UTC_CORRECTION:
+                # Acquire offset value
+                offset: int = 0
+                check: bool = True
+                while check:
+                    try:
+                        init: str = input("Manually enter the utc time for the starting point [e.g. 'yyyy-mm-ddTHH:MM:SS' or '2020-01-01T00:00:00']:\n")
+                        # Convert the input string to a datetime object
+                        dt: datetime = datetime.fromisoformat(init)
+                        # orig: datetime = datetime.fromisoformat("2020-01-01T00:00:00")
+
+                        # Convert the datetime object to an int
+                        epoch: int = dt.timestamp()
+                        # orig_ts: int = orig.timestamp()
+
+                        # Calculate the offset by subtracting the manual input from the default rtc starting point
+                        offset = epoch - orig_ts
+
+                        check = False
+                    except ValueError:
+                        logging.error("Bad utc format! Try again.")
+
+                data_frame.Epoch_Time = offset + data_frame.Epoch_Time
+                new_utc = []
+                for i in range(len(data_frame["UTC_Time"])):
+                    new_dt: datetime = datetime.fromtimestamp(data_frame.Epoch_Time[i])
+                    new_utc.append(new_dt.isoformat(sep="T"))
+                data_frame.UTC_Time = new_utc
+
             self.sum_df = pd.concat(objs=[self.sum_df, data_frame], ignore_index=True)
 
         # Sort the whole dataset and convert it to a numpy array
@@ -251,12 +291,8 @@ class PostProcess:
             # from the self.sum_df dataframe
             utc = f"{str(int(Y)).zfill(4)}-{str(int(M)).zfill(2)}-{str(int(D)).zfill(2)}T{str(int(h)).zfill(2)}:{str(int(m)).zfill(2)}:{str(int(s)).zfill(2)}Z"
 
-            # ep2: int = self.sum_df["Epoch_Time"].to_numpy()[i]
-            # try:
+            # Generate the ep2 value from the utc string (Used to group strikes)
             dtm: datetime = datetime.strptime(utc, '%Y-%m-%dT%H:%M:%SZ')
-            # except ValueError:
-            #     logging.error("Time %s error", utc)
-            #     logging.error("%s-%s-%s %s:%s:%s", Y.zfill(4), M.zfill(2), D, h, m, s)
             ep2: int = datetime.timestamp(dtm)
 
             # Create a new packet from the current entry
@@ -411,7 +447,7 @@ class PostProcess:
             plot_name = f"{self.dataset}_day{day}_Scatter"
             it = 0
             while it < len(daily_tm):
-                plt.scatter(x=daily_tm[it], y=daily_stk[it], color=color_list[it], label=self.nodes[it])
+                plt.scatter(x=daily_tm[it], y=daily_stk[it], color=color_list[it], label=self.node_names[self.nodes[it]])
                 it += 1
             plt.xlabel("Time (Hours)")
             plt.xticks(ticks=seconds_h, labels=hours)
@@ -434,7 +470,7 @@ class PostProcess:
         plot_name: str = f"{self.dataset}_Total_Scatter"
         it = 0
         while it < len(tot_tm):
-            plt.scatter(x=tot_tm[it], y=tot_stk[it], color=color_list[it], label=self.nodes[it])
+            plt.scatter(x=tot_tm[it], y=tot_stk[it], color=color_list[it], label=self.node_names[self.nodes[it]])
             it += 1
         plt.xlabel("Time (Days)")
         plt.xticks(ticks=seconds, labels=days)
