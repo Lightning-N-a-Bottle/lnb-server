@@ -20,11 +20,17 @@ import gmplot
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
+########## START CONFIG CONSTANTS ##########
 STRIKE_TIME: float = .5
 EXCLUDE_DISTURBERS: bool = False
 UTC_CORRECTION: bool = True
+########### END CONFIG CONSTANTS ###########
 
-color_list: list[str] = [
+
+# This list is collection of colors to be used for the Scatterplot, it will need to be expanded as
+# the number of nodes increase
+color_list: List[str] = [
     "Blue",
     "Green",
     "Red",
@@ -48,13 +54,30 @@ class Packet:
         self.distance: int = min(dis, 40)
 
     def is_disturber(self) -> bool:
-        """ Identify whether this packet is a disturber or not """
+        """ Identify whether this packet is a disturber or not
+
+        Disturbers are data points that don't have a real distance measurement, they could be
+        man made, they could be noise, or they could be a strike that was misread. Depending on
+        the dataset we may or may not want to keep this data, so it is worth keeping and
+        identifying
+
+        Args:
+            - None
+        Returns:
+            - bool: if the current packet is at or above the max distance, it is a disturber
+        """
         if self.distance >= 40:
             return True
         return False
 
     def to_string(self) -> str:
-        """ A convenient way to debug the contents of the Packet formatted into a string """
+        """ A convenient way to debug the contents of the Packet formatted into a string
+        
+        Args:
+            - None
+        Returns:
+            - stk (str): a formatted string that displays the contents of the Packet for debugging
+        """
         return f" ({self.gps_lat},{self.gps_long})@{self.distance}km"
 
 class Strike:
@@ -95,16 +118,53 @@ class Strike:
             if not pack.is_disturber():
                 check = False
         return check
+    
+    def packet_count(self) -> int:
+        """ Counts the amount of packets in the current Strike
+
+        This will be used to determine whether the gmplot is worth looking at.
+        It already factors in a way to handle disturbers based on the config boolean, however
+        this can be expanded on.
+
+        Args:
+            - None
+        Returns:
+            - val_packs (int): the amount of packets in the strike that were deemed valid
+        """
+        val_packs: int = 0
+
+        if EXCLUDE_DISTURBERS:
+            for pack in self.packet_list:
+                if not pack.is_disturber():
+                    val_packs += 1
+        else:
+            val_packs = len(self.packet_list)
+        
+        return val_packs
 
     def to_filename(self) -> str:
-        """ A convenient way to create an output filename for this specific strike """
+        """ A convenient way to create an output filename for this specific strike
+        
+        Args:
+            - None
+        Returns:
+            - name (str): a formatted filename to output the gmplot data to for this Strike
+        """
         name: str = f"strike_{self.day}d{self.hour}h{self.minute}m{self.second}s"
         if self.only_disturbers():
             name += "_disturbers"
+        elif self.packet_count() > 1:
+            name += "_good"
         return name
 
     def to_string(self) -> str:
-        """ A convenient way to debug the contents of the Strike formatted into a string """
+        """ A convenient way to debug the contents of the Strike formatted into a string
+        
+        Args:
+            - None
+        Returns:
+            - stk (str): a formatted string that displays the contents of the Strike for debugging
+        """
         stk: str = f"{self.utc}: "
         for pack in self.packet_list:
             stk += pack.to_string() + ","
@@ -181,7 +241,7 @@ class PostProcess:
         self.generate_scatter()
         self.generate_gmap()
 
-    def read_csvs(self):
+    def read_csvs(self) -> None:
         """ Read in all the csvs in a directory
 
         Ideally all csvs in the directory are from the same storm and have similar time ranges
