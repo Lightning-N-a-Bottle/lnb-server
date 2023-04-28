@@ -20,13 +20,14 @@ import gmplot
 import matplotlib.pyplot as plt
 import pandas as pd
 
-
 ########## START CONFIG CONSTANTS ##########
 STRIKE_TIME: float = .5
-EXCLUDE_DISTURBERS: bool = False
+EXCLUDE_DISTURBERS: bool = True
 UTC_CORRECTION: bool = True
 ########### END CONFIG CONSTANTS ###########
 
+
+node_names: Dict[str, str] = {}
 
 # This list is collection of colors to be used for the Scatterplot, it will need to be expanded as
 # the number of nodes increase
@@ -78,7 +79,8 @@ class Packet:
         Returns:
             - stk (str): a formatted string that displays the contents of the Packet for debugging
         """
-        return f" ({self.gps_lat},{self.gps_long})@{self.distance}km"
+        gps_coords = f"({self.gps_lat},{self.gps_long})"
+        return f" {node_names[gps_coords]}@{self.distance}km"
 
 class Strike:
     """ A Strike object represents all the measured data from one strike compiled together
@@ -195,7 +197,6 @@ class PostProcess:
     """
     # Define class constants
     nodes: List[str] = []
-    node_names: Dict[str, str] = {}
     strikes: List[Strike] = []
     dataset: str = ""
     start_time: int = 0
@@ -261,8 +262,11 @@ class PostProcess:
         for datafile in os.listdir(data_dir):
             logging.info("Reading in %s...", datafile)
             name, start_time, gps_name = datafile.split(sep="_")
+
             gps_name = gps_name[:len(gps_name)-4]
-            self.node_names[gps_name] = name
+            global node_names
+            node_names[gps_name] = name
+
             orig_ts = int(start_time)
 
             data_frame: pd.DataFrame = pd.read_csv(filepath_or_buffer=data_dir+"/"+datafile, header=0)
@@ -364,7 +368,6 @@ class PostProcess:
 
             # This will skip the current packet if it is a disturber, counts total valid/disturber
             if EXCLUDE_DISTURBERS and pack.is_disturber():
-                logging.debug("Skipping disturber: %d...", i)
                 self.disturber_packets += 1
                 i += 1
                 continue
@@ -375,8 +378,6 @@ class PostProcess:
             if ep2-ep1 > STRIKE_TIME:
                 ep1 = ep2
                 self.strikes.append(Strike(utc))
-            else:
-                logging.debug("Merging %d into strike %d:\t%s", i, len(self.strikes), utc)
 
             # Add the packet data to the current Strike object
             last: int = len(self.strikes)-1
@@ -507,7 +508,7 @@ class PostProcess:
             plot_name = f"{self.dataset}_day{day}_Scatter"
             it = 0
             while it < len(daily_tm):
-                plt.scatter(x=daily_tm[it], y=daily_stk[it], color=color_list[it], label=self.node_names[self.nodes[it]])
+                plt.scatter(x=daily_tm[it], y=daily_stk[it], color=color_list[it], label=node_names[self.nodes[it]])
                 it += 1
             plt.xlabel("Time (Hours)")
             plt.xticks(ticks=seconds_h, labels=hours)
@@ -530,7 +531,7 @@ class PostProcess:
         plot_name: str = f"{self.dataset}_Total_Scatter"
         it = 0
         while it < len(tot_tm):
-            plt.scatter(x=tot_tm[it], y=tot_stk[it], color=color_list[it], label=self.node_names[self.nodes[it]])
+            plt.scatter(x=tot_tm[it], y=tot_stk[it], color=color_list[it], label=node_names[self.nodes[it]])
             it += 1
         plt.xlabel("Time (Days)")
         plt.xticks(ticks=seconds, labels=days)
