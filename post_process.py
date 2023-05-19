@@ -1,8 +1,6 @@
 """ @file       post_process.py
     @author     Sean Duffie
     @brief      Handles the post processing required for the acquired lnb-capstone data
-    
-
 
     Notes:
         - https://stackoverflow.com/questions/54120759/gmplot-api-issue
