@@ -1,7 +1,8 @@
-""" post_process.py
-
-    Handles the post processing required for the acquired lnb-capstone data
+""" @file       post_process.py
+    @author     Sean Duffie
+    @brief      Handles the post processing required for the acquired lnb-capstone data
     
+
 
     Notes:
         - https://stackoverflow.com/questions/54120759/gmplot-api-issue
@@ -273,19 +274,29 @@ class PostProcess:
 
             # If needed, correct the time values here:
             if UTC_CORRECTION:
-                # Acquire offset value
+                default: datetime = datetime.fromisoformat("2020-01-01T00:00:00")
+                default_ts: int = default.timestamp()
+
+                # Amount that the timestamp needs to be adjusted
                 offset: int = 0
-                check: bool = True
+
+                # Determine whether file needs offset
+                if abs(orig_ts - default_ts) < 1000:
+                    check: bool = True
+                else:
+                    check: bool = False
+
+                # Acquire offset value
                 while check:
                     try:
-                        init: str = input("Manually enter the utc time for the starting point [e.g. 'yyyy-mm-ddTHH:MM:SS' or '2020-01-01T00:00:00']:\n")
+                        logging.warning("Manually enter the utc time for the starting point [e.g. 'yyyy-mm-ddTHH:MM:SS' or '2020-01-01T00:00:00']:\n\t")
+                        init: str = input()
+                        print()
                         # Convert the input string to a datetime object
                         dt: datetime = datetime.fromisoformat(init)
-                        # orig: datetime = datetime.fromisoformat("2020-01-01T00:00:00")
 
                         # Convert the datetime object to an int
                         epoch: int = dt.timestamp()
-                        # orig_ts: int = orig.timestamp()
 
                         # Calculate the offset by subtracting the manual input from the default rtc starting point
                         offset = epoch - orig_ts
